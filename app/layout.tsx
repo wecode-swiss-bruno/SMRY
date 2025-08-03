@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
-import { GoogleAnalytics } from '@next/third-parties/google'
-import TemporaryMaintenance from "@/components/temporary";
+import { GoogleAnalytics } from "@next/third-parties/google";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -36,9 +35,8 @@ export default function RootLayout({
         //     "radial-gradient(circle at 18.7% 37.8%, rgb(250, 250, 250) 0%, rgb(225, 234, 238) 90%);",
         // }}
       >
-        <GoogleAnalytics gaId="G-RFC55FX414" />
+        <GoogleAnalytics gaId="" />
         {children}
-        <TemporaryMaintenance />
       </body>
     </html>
   );

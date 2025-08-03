@@ -18,21 +18,29 @@ async function getFetchOptions(url: string): Promise<CustomFetchOptions> {
   if (url.includes("archive.is") || url.includes("web.archive")) {
     const proxyURL = process.env.PROXY_URL;
 
-    if (!proxyURL) {
-      throw new Error("No proxy URL configured in environment variables");
+    if (proxyURL) {
+      // Only use proxy if one is configured
+      options.agent = new HttpsProxyAgent(proxyURL);
+      console.log(`Using proxy for archive URL: ${url}`);
+    } else {
+      // No proxy configured, proceed without proxy
+      console.log(`No proxy configured, fetching archive URL directly: ${url}`);
     }
 
-    options.agent = new HttpsProxyAgent(proxyURL);
-    // options.headers = {
-    //   "User-Agent":
-    //     "Mozilla/5.0 (X11; U; Linux i686 (x86_64); en-US; rv:1.8.1.4) Gecko/20070515 Firefox/2.0.0.4",
-    // };
+    // Use alternative user agent for archive sites
+    options.headers = {
+      "User-Agent":
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    };
   }
 
   return options;
 }
 
-async function fetchHtmlContent(url: string, options: CustomFetchOptions): Promise<string> {
+async function fetchHtmlContent(
+  url: string,
+  options: CustomFetchOptions
+): Promise<string> {
   let response;
   try {
     response = await fetch(url, options);
@@ -102,7 +110,13 @@ function fixLinks(root: any, url: string) {
       }
 
       if (originalUrl) {
-        a.setAttribute("href", `${process.env.NEXT_PUBLIC_URL}/${new URL(originalUrl, url).toString()}`);
+        a.setAttribute(
+          "href",
+          `${process.env.NEXT_PUBLIC_URL}/${new URL(
+            originalUrl,
+            url
+          ).toString()}`
+        );
       }
     }
   });
@@ -122,8 +136,12 @@ async function fetchWithDiffbot(url: string) {
     const htmlContent = data.objects[0].html;
     return htmlContent;
   } catch (error) {
-    console.error(`Failed to fetch from diffbot URL: ${diffbotURL}. Error: ${error}, Diffbot URL: ${diffbotURL}`);
-    throw new Error(`Failed to fetch from diffbot URL: ${diffbotURL}. Error: ${error} Diffbot URL: ${diffbotURL}`);
+    console.error(
+      `Failed to fetch from diffbot URL: ${diffbotURL}. Error: ${error}, Diffbot URL: ${diffbotURL}`
+    );
+    throw new Error(
+      `Failed to fetch from diffbot URL: ${diffbotURL}. Error: ${error} Diffbot URL: ${diffbotURL}`
+    );
   }
 }
 
@@ -132,11 +150,15 @@ export async function fetchWithTimeout(url: string) {
   const timeoutId = setTimeout(() => controller.abort(), 14000); // 14 seconds timeout
 
   try {
-    const response = await fetchWithTimeoutHelper(url, { signal: controller.signal });
+    const response = await fetchWithTimeoutHelper(url, {
+      signal: controller.signal,
+    });
     return response;
   } catch (err) {
     const error = safeError(err);
-    return new Response(`Error fetching URL: ${error.message}`, { status: 500 });
+    return new Response(`Error fetching URL: ${error.message}`, {
+      status: 500,
+    });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -151,8 +173,14 @@ async function fetchWithTimeoutHelper(url: string, options: any) {
       const fetchWithoutDiffbotPromise = fetchHtmlContent(url, fetchOptions);
 
       try {
-        const [diffbotResult, noDiffbotResult] = await Promise.allSettled([fetchWithDiffbotPromise, fetchWithoutDiffbotPromise])
-          .then(results => results.map(result => result.status === "fulfilled" ? result.value : null));
+        const [diffbotResult, noDiffbotResult] = await Promise.allSettled([
+          fetchWithDiffbotPromise,
+          fetchWithoutDiffbotPromise,
+        ]).then((results) =>
+          results.map((result) =>
+            result.status === "fulfilled" ? result.value : null
+          )
+        );
 
         const bothResultsNull = !diffbotResult && !noDiffbotResult;
         if (bothResultsNull) {
@@ -160,7 +188,10 @@ async function fetchWithTimeoutHelper(url: string, options: any) {
         }
 
         if (diffbotResult && noDiffbotResult) {
-          html = diffbotResult.length > noDiffbotResult.length ? diffbotResult : noDiffbotResult;
+          html =
+            diffbotResult.length > noDiffbotResult.length
+              ? diffbotResult
+              : noDiffbotResult;
         } else {
           html = diffbotResult || noDiffbotResult;
         }
@@ -188,7 +219,6 @@ async function fetchWithTimeoutHelper(url: string, options: any) {
     throw new Error(`Error fetching URL: ${error.message}`);
   }
 }
-
 
 // import { parse } from "node-html-parser";
 // import { HttpsProxyAgent } from "https-proxy-agent";
@@ -338,4 +368,3 @@ async function fetchWithTimeoutHelper(url: string, options: any) {
 //     throw new Error(`Error fetching URL: ${error.message}`);
 //   }
 // }
-

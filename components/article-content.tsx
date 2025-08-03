@@ -13,7 +13,16 @@ import ShareButton from "./share-button";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import showdown from "showdown";
-import { kv } from "@vercel/kv";
+// Conditional KV import - only if environment variables are set
+let kv: any = null;
+try {
+  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    const kvModule = require("@vercel/kv");
+    kv = kvModule.kv;
+  }
+} catch (error) {
+  console.log("KV not available in article-content, running without caching");
+}
 import { z } from "zod";
 import { fromError } from "zod-validation-error";
 import { waitUntil } from "@vercel/functions";
@@ -21,7 +30,7 @@ import { cache } from "react";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const converter = new showdown.Converter();
-export const revalidate = 3600*24*3;
+export const revalidate = 3600 * 24 * 3;
 
 export type Source = "direct" | "jina.ai" | "wayback" | "archive";
 
@@ -145,6 +154,11 @@ async function saveOrReturnLongerArticle(
   newArticle: Article
 ): Promise<Article> {
   try {
+    if (!kv) {
+      // No KV available, just return the new article
+      return newArticle;
+    }
+
     const existingArticleString = await kv.get(key);
 
     const existingArticle = existingArticleString
@@ -171,7 +185,10 @@ export const getData = cache(
       const cacheKey = `${source}:${url}`;
 
       let cachedArticleJson: string | null = null;
-      cachedArticleJson = await kv.get(cacheKey);
+
+      if (kv) {
+        cachedArticleJson = await kv.get(cacheKey);
+      }
 
       if (cachedArticleJson) {
         console.log("cachedArticleJson", cachedArticleJson);
@@ -276,8 +293,12 @@ const fetchArticle = async (
   source: Source
 ): Promise<ResponseItem | null> => {
   try {
+    console.log(`Fetching ${source}: ${urlWithSource}`);
     const response = await fetchWithTimeout(urlWithSource);
     if (!response.ok) {
+      console.error(
+        `HTTP error for ${source}: ${response.status} - ${urlWithSource}`
+      );
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const markdownToHtml = (markdown: string) => {
@@ -372,7 +393,11 @@ const getUrlWithSource = (source: Source, url: string): string => {
     case "jina.ai":
       return `https://r.jina.ai/${url}`;
     case "wayback":
-      return `https://web.archive.org/web/2/${encodeURIComponent(url)}`;
+      // Use Wayback Machine's web format with wildcard timestamp to get latest snapshot
+      return (
+        `https://web.archive.org/web/*/https://` +
+        url.replace(/^https?:\/\//, "")
+      );
     case "archive":
       return `http://archive.is/latest/${encodeURIComponent(url)}`;
     case "direct":
